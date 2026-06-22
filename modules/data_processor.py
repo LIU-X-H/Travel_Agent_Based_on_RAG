@@ -63,7 +63,7 @@ _VALID_TAGS: set = {
     "世界文化遗产", "自然风光", "古迹", "博物馆", "皇家园林",
     "登山", "历史遗迹", "湖泊", "寺庙", "石窟", "动物园",
     "亲子", "自然", "熊猫", "水利工程", "考古", "免费",
-    "佛教", "5A", "4A", "3A",
+    "佛教", "5A", "4A", "3A", "其他",
 }
 
 
@@ -286,6 +286,9 @@ class ScenicDataProcessor:
 
         # ---- 5) tags 标准化 ----
         tags: List[str] = self._normalize_tags(item.get("tags", ""))
+        # 兜底：Chroma 不允许空列表，若无合法标签则填 "其他"
+        if not tags:
+            tags = ["其他"]
 
         # ---- 6) city 名称清洗 ----
         city = self._normalize_city(city)
