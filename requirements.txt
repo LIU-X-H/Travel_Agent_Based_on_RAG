@@ -1,0 +1,10 @@
+langchain>=0.2.0
+langchain-community
+chromadb
+sentence-transformers
+rank_bm25
+fastapi
+uvicorn
+python-dotenv
+pandas
+pydantic
