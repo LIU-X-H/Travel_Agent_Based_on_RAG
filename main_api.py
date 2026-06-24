@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 from config.settings import settings
 from modules.retriever import ScenicRetriever
 from modules.vector_store import ScenicVectorStore
+from api.routes.agent import router as agent_router
 
 # ============================================================
 # 应用初始化
@@ -58,6 +59,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(agent_router)
 
 
 # ============================================================
@@ -155,6 +158,16 @@ class ErrorResponse(BaseModel):
 # ============================================================
 # 全局异常处理
 # ============================================================
+
+@app.get("/chat", include_in_schema=False)
+async def chat_ui():
+    idx = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "index.html")
+    if os.path.exists(idx):
+        from fastapi.responses import FileResponse
+        return FileResponse(idx, media_type="text/html")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=404, content={"error": "Chat UI not found"})
+
 @app.exception_handler(400)
 async def bad_request_handler(request: Request, exc: Exception) -> JSONResponse:
     """捕获 FastAPI 自动生成的 400 校验错误。"""
@@ -464,5 +477,5 @@ if __name__ == "__main__":
         host=args.host,
         port=args.port,
         reload=args.reload,
-        log_level="info",
+    log_level="info",
     )
