@@ -1,132 +1,120 @@
-# 🏯 旅游景点 RAG 知识库项目
+# 旅途小智 - 旅游 AI Agent
 
-> 基于 LangChain + Chroma + BGE 的旅游景点智能检索问答系统
-> 后续将接入 [LangGraph](https://github.com/langchain-ai/langgraph) 构建旅游智能体
+> 基于 LangGraph + LangChain + Chroma + BGE 的旅游智能体，支持多工具调用、持久记忆、流式对话
 
-## 📁 项目结构
+## 特性
+
+- **5 个智能工具**：景点检索 / 天气查询 / 美食推荐 / 行程规划 / 汇率换算
+- **混合检索**：BM25 关键词 + BGE 语义向量加权融合
+- **Agent 自主决策**：LLM 判断是否调工具、调哪个、传什么参数，零硬编码路由
+- **流式对话**：SSE 逐字输出 + 工具调用可视化
+- **持久记忆**：SQLite 对话存储，重启不丢
+- **多对话管理**：Web UI 支持新建/切换/删除对话
+- **双入口**：Web 聊天页面 + 命令行终端
+- **51 条景点 + 30 道美食**：内置真实数据，开箱即用
+
+## 快速启动
+
+```bash
+# 1. 安装依赖
+pip install -r requirements.txt
+
+# 2. 配置 API Key
+cp .env.example .env
+# 编辑 .env，填入 LLM_API_KEY
+
+# 3. 导入数据（景点 + 美食）
+python -c "from modules.data_processor import ScenicDataProcessor; ScenicDataProcessor().process_and_import('scenic_city.json')"
+python -c "from modules.food_tool import FoodTool; FoodTool()"
+
+# 4. 启动 Web 服务
+python main_api.py
+# 访问 http://localhost:8000/chat
+```
+
+## 项目结构
 
 ```
 travel_scenic_rag/
-├── config/                      # 🔧 配置模块 — 全局参数统一管理
-│   ├── __init__.py
-│   └── settings.py              #   所有可调参数集中定义，支持 .env 覆盖
+├── config/                        # 全局配置
+│   └── settings.py                #   所有参数集中管理，.env 覆盖
 │
-├── core/                        # 🧠 核心模块 — RAG 检索管线
-│   ├── __init__.py
-│   ├── embeddings/              #   向量化：BGE 模型加载与文本嵌入
-│   │   ├── __init__.py
-│   │   └── embedding_loader.py  #     SentenceTransformer 封装
-│   ├── vectorstore/             #   向量库：Chroma 连接与集合管理
-│   │   ├── __init__.py
-│   │   └── chroma_store.py      #     Chroma PersistentClient 封装
-│   ├── retrieval/               #   检索：混合检索、重排序、过滤
-│   │   └── __init__.py          #     (预留) 语义/BM25/混合检索实现
-│   └── llm/                     #   LLM：大模型调用与提示词模板
-│       ├── __init__.py
-│       └── llm_client.py        #     LangChain ChatOpenAI 封装
+├── modules/                       # 功能模块
+│   ├── embedding.py               #   BGE 向量化（单例）
+│   ├── vector_store.py            #   Chroma 向量库封装
+│   ├── retriever.py               #   多策略检索（filter/hybrid/rerank）
+│   ├── data_processor.py          #   数据加载、清洗、入库管线
+│   ├── scenic_tool.py             #   景点检索工具（LangChain Tool）
+│   ├── weather_tool.py            #   天气查询工具（Open-Meteo API）
+│   ├── food_tool.py               #   美食推荐工具
+│   ├── itinerary_tool.py          #   行程规划工具
+│   └── exchange_tool.py           #   汇率换算工具
 │
-├── agents/                      # 🤖 智能体模块 — LangGraph 旅游智能体(预留)
-│   └── __init__.py
+├── core/                          # Agent 核心
+│   ├── agent_builder.py           #   Agent 构建（LLM + 工具 + 提示词）
+│   └── conversation_store.py      #   SQLite 对话持久化
 │
-├── api/                         # 🌐 API 模块 — FastAPI 对外服务
-│   ├── __init__.py
-│   └── routes/                  #   路由：按资源拆分接口
-│       └── __init__.py
+├── api/                           # API 服务
+│   └── routes/agent.py            #   SSE 流式 + 对话管理接口
 │
-├── data/                        # 📦 数据目录
-│   ├── raw/                     #   原始数据：抓取的景点文本/JSON
-│   ├── processed/               #   处理后数据：清洗分块后的文档
-│   └── vector_db/               #   向量库持久化：Chroma 本地存储
+├── static/
+│   └── index.html                 #   Web 聊天 UI
 │
-├── utils/                       # 🛠 工具模块 — 日志、文本处理等通用函数
-│   ├── __init__.py
-│   └── logger.py                #   统一日志配置
+├── data/                          # 数据
+│   ├── raw/                       #   原始 JSON（景点/美食）
+│   ├── vector_db/                 #   Chroma 向量库
+│   └── conversations.db           #   对话历史 SQLite
 │
-├── tests/                       # 🧪 测试模块 — 单元测试与集成测试
-│   └── __init__.py
-│
-├── scripts/                     # 📜 脚本目录 — 数据导入、索引构建等
-│
-├── .env.example                 # 环境变量模板
-├── requirements.txt             # 依赖清单
-└── README.md                    # 项目说明
+├── tests/                         # 单元测试（62+ 条断言）
+├── main_api.py                    # Web 服务入口
+├── main_rag_chat.py               # CLI 对话入口
+└── demo_tool.py                   # 工具演示脚本
 ```
 
-## 🚀 快速启动
+## API 接口
 
-### 1. 环境准备
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/agent/chat` | SSE 流式对话 |
+| `GET` | `/api/agent/threads` | 对话列表 |
+| `GET` | `/api/agent/threads/{id}/messages` | 历史消息 |
+| `DELETE` | `/api/agent/threads/{id}` | 删除对话 |
+| `POST` | `/api/scenic/search` | 景点检索 |
+| `GET` | `/api/health` | 健康检查 |
+| `GET` | `/docs` | Swagger 文档 |
 
-```bash
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate   # Linux/Mac
-# venv\Scripts\activate    # Windows
+## Agent 工具箱
 
-# 安装依赖
-pip install -r requirements.txt
-```
+| 工具 | 数据源 | 能力 |
+|------|--------|------|
+| `scenic_spot_search` | Chroma 向量库（51 条景点） | 按城市/票价/标签过滤 |
+| `get_weather` | Open-Meteo（免费，全球） | 7 天预报 |
+| `search_food` | Chroma 向量库（30 道美食） | 按城市/菜系过滤 |
+| `plan_itinerary` | Agent 编排 | 按城市分组、分配天数 |
+| `exchange_rate` | 内置汇率表 | 20+ 货币换算 |
 
-### 2. 配置环境变量
+## 技术栈
 
-```bash
-cp .env.example .env
-# 按需编辑 .env 文件，配置 API Key 等参数
-```
+| 层级 | 技术 |
+|------|------|
+| Agent 框架 | LangGraph + LangChain 1.3+ |
+| LLM | DeepSeek / OpenAI（ChatOpenAI）|
+| 向量库 | Chroma（HNSW 索引 + SQLite 持久化）|
+| Embedding | BAAI/bge-small-zh-v1.5（512 维）|
+| 混合检索 | BGE 语义 + BM25（jieba 分词）|
+| 对话记忆 | AsyncSqliteSaver |
+| API 服务 | FastAPI + SSE 流式 |
+| 前端 | 原生 HTML/CSS/JS（零框架依赖）|
 
-### 3. 验证安装
+## 配置参数
 
-```python
-from config import Settings
-from core.embeddings import EmbeddingLoader
-from core.vectorstore import ChromaStore
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `LLM_API_KEY` | — | **必填**，LLM API Key |
+| `LLM_API_BASE` | — | DeepSeek/OpenAI 地址 |
+| `EMBEDDING_MODEL_NAME` | `BAAI/bge-small-zh-v1.5` | Embedding 模型 |
+| `HYBRID_ALPHA` | `0.7` | 语义检索权重 |
+| `SIMILARITY_THRESHOLD` | `0.0` | 相似度过滤阈值 |
+| `RERANK_ENABLED` | `false` | ReRank 精排开关 |
 
-# 测试配置加载
-settings = Settings()
-settings.ensure_directories()
-print("✅ 配置加载成功")
-
-# 测试 Embedding 加载
-loader = EmbeddingLoader()
-loader.load()
-print("✅ Embedding 模型加载成功")
-
-# 测试 Chroma 连接
-store = ChromaStore()
-store.connect()
-print("✅ Chroma 连接成功")
-```
-
-## ⚙️ 核心配置参数
-
-| 分类 | 参数 | 默认值 | 说明 |
-|------|------|--------|------|
-| Embedding | `EMBEDDING_MODEL_NAME` | `BAAI/bge-large-zh-v1.5` | BGE 中文向量模型 |
-| 向量库 | `CHROMA_COLLECTION_NAME` | `travel_scenic_spots` | Chroma 集合名称 |
-| 检索 | `SEMANTIC_TOP_K` | `10` | 语义检索候选数 |
-| 检索 | `HYBRID_TOP_K` | `5` | 混合检索返回数 |
-| 混合权重 | `HYBRID_ALPHA` | `0.7` | 语义检索权重 (BM25=1-α) |
-| 重排序 | `RERANK_ENABLED` | `false` | 是否启用 ReRank |
-| 分块 | `CHUNK_SIZE` | `512` | 文本分块大小 |
-
-> 完整参数列表见 [config/settings.py](config/settings.py) 或 [.env.example](.env.example)
-
-## 🧩 技术栈
-
-- **LLM 框架**: LangChain
-- **向量数据库**: Chroma
-- **Embedding**: BGE (BAAI/bge-large-zh-v1.5)
-- **关键词检索**: BM25 (rank_bm25)
-- **API 服务**: FastAPI + Uvicorn
-- **智能体**: LangGraph (后续接入)
-- **数据处理**: Pandas + Pydantic
-
-## 📝 开发计划
-
-- [ ] 语义检索实现
-- [ ] BM25 关键词检索实现
-- [ ] 混合检索 + RRF 融合
-- [ ] BGE ReRanker 重排序
-- [ ] FastAPI 检索接口
-- [ ] LangGraph 旅游智能体
-- [ ] 景点数据导入脚本
-- [ ] 单元测试用例
+> 完整配置见 [.env.example](.env.example)
