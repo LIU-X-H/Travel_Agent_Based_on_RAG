@@ -8,3 +8,10 @@ uvicorn
 python-dotenv
 pandas
 pydantic
+
+# MCP 工具协议
+ 工具协议
+
+# MCP 外部工具协议
+mcp>=1.0.0
+nest-asyncio>=1.5.0

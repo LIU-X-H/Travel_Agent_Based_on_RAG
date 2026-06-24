@@ -9,6 +9,7 @@ from .vector_store import ScenicVectorStore
 from .retriever import ScenicRetriever
 from .data_processor import ScenicDataProcessor
 from .scenic_tool import ScenicSpotRetrieveTool
+from .weather_tool import WeatherTool
 
 __all__ = [
     "EmbeddingModel",
@@ -16,4 +17,5 @@ __all__ = [
     "ScenicRetriever",
     "ScenicDataProcessor",
     "ScenicSpotRetrieveTool",
+    "WeatherTool",
 ]

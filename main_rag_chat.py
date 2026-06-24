@@ -21,6 +21,7 @@
 
 import sys
 import os
+import asyncio
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -29,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dotenv import load_dotenv
 load_dotenv()
+
 
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent          # LangChain 1.3+ 新 API
@@ -40,6 +42,10 @@ from modules.vector_store import ScenicVectorStore
 from modules.retriever import ScenicRetriever
 from modules.data_processor import ScenicDataProcessor
 from modules.scenic_tool import ScenicSpotRetrieveTool
+from modules.weather_tool import WeatherTool
+from modules.food_tool import FoodTool
+from modules.itinerary_tool import ItineraryTool
+from modules.exchange_tool import ExchangeTool
 
 
 # ============================================================
@@ -61,10 +67,14 @@ TRAVEL_SYSTEM_PROMPT = """\
 
 ## 核心规则
 1. 你只能基于 scenic_spot_search 工具检索到的景点信息回答用户问题。
+   如果用户询问天气，使用 get_weather 工具查询。
+   如果用户询问美食、餐厅、特色小吃，使用 search_food 工具查询。
 2. 如果检索结果为空或不相关，请如实告知用户"抱歉，知识库中暂无相关信息"，绝不能编造景点信息。
 3. 回答时请分点整理：景点名称、所在城市、票价、景区等级、特色标签、简介要点。
 4. 如果用户询问多个景点或做对比，逐一列出，方便用户比较选择。
-5. 对于拍照建议、穿搭推荐、交通路线、美食推荐等不在知识库范围内的问题，
+5. 如果用户同时问景点和天气（如"杭州这周天气怎么样，有什么好玩的"），
+   依次调用 get_weather 和 scenic_spot_search，综合回答。
+6. 对于拍照建议、穿搭推荐、交通路线、美食推荐等不在知识库范围内的问题，
    可以用你自己的常识简短回答，但需说明"此建议来自通用常识，非景点知识库信息"。
 
 ## 回答格式
@@ -78,6 +88,9 @@ TRAVEL_SYSTEM_PROMPT = """\
 - 禁止编造景点名称、地址、票价、等级等具体信息
 - 禁止声称信息来自知识库而实际未检索到
 - 禁止对知识库范围外的问题强制调用工具
+
+## 多语言支持
+- 用用户提问的语言回答。用户用中文问就用中文答，用英文问就用英文答，用日文问就用日文答。
 """
 
 
@@ -111,7 +124,7 @@ def init_llm() -> ChatOpenAI:
         "api_key": api_key,
         "temperature": settings.LLM_TEMPERATURE,
         "max_tokens": settings.LLM_MAX_TOKENS,
-        "streaming": False,
+        "streaming": True,  # 开启流式输出
     }
     if api_base:
         kwargs["base_url"] = api_base
@@ -120,7 +133,9 @@ def init_llm() -> ChatOpenAI:
 
     # 快速验证连接（发送一条极短消息，提前暴露错误）
     try:
-        llm = ChatOpenAI(**kwargs)
+        # 验证时关掉 streaming，避免输出乱码
+        test_kwargs = {**kwargs, "streaming": False}
+        llm = ChatOpenAI(**test_kwargs)
         test_resp = llm.invoke("Hi")
         print(f"[LLM] 连接验证成功: {test_resp.content[:50]}...")
     except Exception as e:
@@ -129,7 +144,8 @@ def init_llm() -> ChatOpenAI:
             f"原始错误: {type(e).__name__}: {e}"
         ) from e
 
-    return llm
+    # 返回时开启 streaming
+    return ChatOpenAI(**kwargs)
 
 
 def init_agent(llm: ChatOpenAI) -> Any:
@@ -147,8 +163,13 @@ def init_agent(llm: ChatOpenAI) -> Any:
     """
     # ---- 检索工具 ----
     retriever = ScenicRetriever()
-    tool = ScenicSpotRetrieveTool(retriever=retriever)
-    print(f"[Agent] 已加载检索工具: {tool.name}")
+    scenic_tool = ScenicSpotRetrieveTool(retriever=retriever)
+    weather_tool = WeatherTool()
+    food_tool = FoodTool()
+    itinerary_tool = ItineraryTool()
+    exchange_tool = ExchangeTool()
+    tools = [scenic_tool, weather_tool, food_tool, itinerary_tool, exchange_tool]
+    print(f"[Agent] 已加载工具: {[t.name for t in tools]}")
 
     # ---- 对话记忆（LangGraph MemorySaver） ----
     checkpointer = MemorySaver()
@@ -157,12 +178,12 @@ def init_agent(llm: ChatOpenAI) -> Any:
     # ---- 创建 Agent (LangChain 1.3+ API) ----
     agent = create_agent(
         model=llm,
-        tools=[tool],
+        tools=tools,
         system_prompt=TRAVEL_SYSTEM_PROMPT,
         checkpointer=checkpointer,
     )
 
-    print(f"[Agent] Agent 创建完成: tool={tool.name}")
+    print(f"[Agent] Agent 创建完成: tools={[t.name for t in tools]}")
     return agent
 
 
@@ -239,9 +260,12 @@ def extract_tool_calls(messages: list) -> list:
     return calls
 
 
-def chat_loop(agent: Any) -> None:
+async def chat_loop(agent: Any) -> None:
     """
-    交互式命令行对话循环。
+    交互式命令行对话循环（流式输出）。
+
+    使用 agent.astream_events 逐 token 输出，
+    工具调用时显示状态，最终回答逐字打印。
 
     参数:
         agent: create_agent 返回的 Agent 实例
@@ -249,6 +273,7 @@ def chat_loop(agent: Any) -> None:
     print(WELCOME_BANNER)
 
     config = {"configurable": {"thread_id": "travel_chat_001"}}
+    from langchain_core.messages import ToolMessage
 
     while True:
         try:
@@ -269,36 +294,54 @@ def chat_loop(agent: Any) -> None:
                 print("[旅途小智] 对话记忆已清除，我们可以重新开始~")
                 continue
 
-            # ---- 调用 Agent ----
+            # ---- 流式调用 Agent ----
             print()
-            result = agent.invoke(
+            tool_called = False
+            answer_started = False
+
+            async for event in agent.astream_events(
                 {"messages": [HumanMessage(content=user_input)]},
                 config=config,
-            )
+                version="v2",
+            ):
+                kind = event["event"]
 
-            # ---- 日志：工具调用 ----
-            all_messages = result.get("messages", [])
-            tool_calls = extract_tool_calls(all_messages)
-            if tool_calls:
-                logger.info(f"[Agent] 工具调用 {len(tool_calls)} 次:")
-                for i, call in enumerate(tool_calls, 1):
-                    logger.info(f"  [{i}] {call['name']}: {call['input']}")
-                    if call.get("observation"):
-                        logger.info(f"      结果预览: {call['observation']}...")
-            else:
-                logger.info("[Agent] 未调用检索工具，直接模型回答")
+                # ---- 工具调用开始 ----
+                if kind == "on_tool_start":
+                    tool_called = True
+                    tool_name = event.get("name", "unknown")
+                    tool_input = event.get("data", {}).get("input", {})
+                    logger.info(f"[Agent] 调用工具: {tool_name}({tool_input})")
 
-            # ---- 提取最终回答 ----
-            final_answer = ""
-            for msg in reversed(all_messages):
-                if isinstance(msg, AIMessage) and msg.content:
-                    final_answer = msg.content
-                    break
+                # ---- 工具调用结束 ----
+                elif kind == "on_tool_end":
+                    output = event.get("data", {}).get("output", "")
+                    if isinstance(output, ToolMessage):
+                        preview = str(output.content)[:150].replace("\n", " ")
+                        logger.info(f"      检索结果: {preview}...")
 
-            if final_answer:
-                print(f"[旅途小智]\n{final_answer}")
-            else:
+                # ---- LLM 逐 token 流式输出 ----
+                elif kind == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk is None:
+                        continue
+                    content = chunk.content if hasattr(chunk, "content") else ""
+                    if content:
+                        # 跳过工具调用 JSON（只输出自然语言）
+                        if isinstance(content, str) and not content.strip().startswith(
+                            ("{", "[", "<tool")
+                        ):
+                            if not answer_started:
+                                print("[旅途小智]", end="", flush=True)
+                                answer_started = True
+                            print(content, end="", flush=True)
+
+            if answer_started:
+                print()  # 收尾换行
+            elif not tool_called:
                 print("[旅途小智] 抱歉，我暂时无法回答这个问题，请稍后重试。")
+            else:
+                logger.info("[Agent] 工具已调用，等待下一轮生成回答...")
 
         except KeyboardInterrupt:
             print("\n\n[旅途小智] 检测到中断，再见~")
@@ -322,7 +365,7 @@ def chat_loop(agent: Any) -> None:
 # ============================================================
 # 主入口
 # ============================================================
-def main() -> None:
+async def main() -> None:
     """主函数：初始化全部组件并启动对话循环。"""
     print("=" * 60)
     print("  旅途小智 - 旅游景点 RAG 对话系统 启动中...")
@@ -333,6 +376,7 @@ def main() -> None:
         print("[WARN] 未找到 .env 文件。建议: cp .env.example .env 并填入 LLM_API_KEY")
     else:
         print(f"[OK] .env 已加载: {env_file}")
+
 
     check_vector_store()
 
@@ -353,11 +397,13 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        chat_loop(agent)
+        await chat_loop(agent)
+    except KeyboardInterrupt:
+        print("\n再见~")
     except Exception as e:
         print(f"\n[ERROR] 对话循环异常退出: {e}")
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
