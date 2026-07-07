@@ -10,7 +10,7 @@
 - 全局异常捕获，统一标准错误码
 - CORS 跨域支持，便于前端调用
 
-启动方式：
+启动方式（带前端界面）：
     python main_api.py                     # 默认 0.0.0.0:8000
     python main_api.py --port 8080         # 自定义端口
     uvicorn main_api:app --reload          # 开发模式热重载
@@ -158,6 +158,18 @@ class ErrorResponse(BaseModel):
 # ============================================================
 # 全局异常处理
 # ============================================================
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    from fastapi.responses import Response
+    return Response(
+        content='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+                '<rect width="32" height="32" rx="8" fill="#e8811a"/>'
+                '<text x="16" y="23" text-anchor="middle" font-size="20" fill="#fff">&#x2708;</text>'
+                '</svg>',
+        media_type="image/svg+xml",
+    )
+
 
 @app.get("/chat", include_in_schema=False)
 async def chat_ui():

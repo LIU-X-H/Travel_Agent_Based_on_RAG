@@ -14,6 +14,7 @@ from modules.weather_tool import WeatherTool
 from modules.food_tool import FoodTool
 from modules.itinerary_tool import ItineraryTool
 from modules.exchange_tool import ExchangeTool
+from modules.hotel_tool import HotelTool
 from core.conversation_store import ConversationStore
 
 logger = logging.getLogger("agent_builder")
@@ -55,7 +56,7 @@ def init_agent(llm: Optional[ChatOpenAI] = None, checkpointer=None) -> Any:
         checkpointer = MemorySaver()
     tools = [
         ScenicSpotRetrieveTool(retriever=ScenicRetriever()),
-        WeatherTool(), FoodTool(), ItineraryTool(), ExchangeTool(),
+        WeatherTool(), FoodTool(), ItineraryTool(), ExchangeTool(), HotelTool(),
     ]
     logger.info(f"Agent 工具: {[t.name for t in tools]}")
     agent = create_agent(
