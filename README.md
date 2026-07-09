@@ -4,7 +4,7 @@
 
 ## 特性
 
-- **5 个智能工具**：景点检索 / 天气查询 / 美食推荐 / 行程规划 / 汇率换算
+- **6 个智能工具**：景点检索 / 天气查询 / 美食推荐 / 行程规划 / 汇率换算 / 酒店查询
 - **混合检索**：BM25 关键词 + BGE 语义向量加权融合
 - **Agent 自主决策**：LLM 判断是否调工具、调哪个、传什么参数，零硬编码路由
 - **流式对话**：SSE 逐字输出 + 工具调用可视化
@@ -47,6 +47,7 @@ travel_scenic_rag/
 │   ├── scenic_tool.py             #   景点检索工具（LangChain Tool）
 │   ├── weather_tool.py            #   天气查询工具（Open-Meteo API）
 │   ├── food_tool.py               #   美食推荐工具
+│   ├── hotel_tool.py              #   酒店查询工具（参考价 + 预订链接）
 │   ├── itinerary_tool.py          #   行程规划工具
 │   └── exchange_tool.py           #   汇率换算工具
 │
@@ -90,6 +91,7 @@ travel_scenic_rag/
 | `scenic_spot_search` | Chroma 向量库（51 条景点） | 按城市/票价/标签过滤 |
 | `get_weather`        | Open-Meteo（免费，全球）   | 7 天预报             |
 | `search_food`        | Chroma 向量库（30 道美食） | 按城市/菜系过滤      |
+| `search_hotels`    | 内置城市价格区间表        | 参考价 + Trip.com/携程直达链接 |
 | `plan_itinerary`     | Agent 编排                 | 按城市分组、分配天数 |
 | `exchange_rate`      | 内置汇率表                 | 20+ 货币换算         |
 

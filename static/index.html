@@ -102,6 +102,9 @@
   .msg.ai .bubble h1,.msg.ai .bubble h2,.msg.ai .bubble h3{font-size:15px;margin:8px 0 4px}
   .msg.ai .bubble code{background:#ede4d5;padding:2px 6px;border-radius:4px;font-size:13px}
   .msg.ai .bubble pre{background:#2c2416;color:#e8dfd3;padding:10px;border-radius:8px;overflow-x:auto}
+  .pdf-btn{display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:5px 12px;border-radius:8px;border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:12px;cursor:pointer;transition:.2s;font-family:inherit}
+  .pdf-btn:hover{background:var(--accent);color:#fff}
+  .pdf-btn svg{width:14px;height:14px;fill:currentColor}
 
   /* Tool card */
   .tool-card{
@@ -253,7 +256,7 @@ async function loadThread(tid){
     if(d.messages&&d.messages.length>0){
       d.messages.forEach(function(m){
         if(m.role==='user') addMsg('user',esc(m.content));
-        else addMsg('ai', renderMD(m.content));
+        else addMsg('ai', renderMD(m.content), m.content);
       });
     }else{
       loadWelcome();
@@ -301,10 +304,22 @@ function loadWelcome(){
 }
 
 // ---- Messages ----
-function addMsg(role, content){
+function addMsg(role, content, rawText){
   const w=document.getElementById('welcome'); if(w) w.remove();
   const div=document.createElement('div'); div.className='msg '+role;
-  div.innerHTML='<div class=avatar>'+(role==='user'?'&#x1F464;':'&#x2708;')+'</div><div class=bubble>'+content+'</div>';
+  const bubble=document.createElement('div'); bubble.className='bubble';
+  const cdiv=document.createElement('div'); cdiv.className='bubble-content';
+  cdiv.innerHTML=content; bubble.appendChild(cdiv);
+  if(role==='ai'){
+    bubble.dataset.rawText=rawText||'';
+    const pdf=document.createElement('button'); pdf.className='pdf-btn';
+    pdf.innerHTML='📄 将回答导出为PDF';
+    pdf.title='将行程导出为PDF文件';
+    pdf.onclick=function(e){e.stopPropagation();downloadPDF(bubble.dataset.rawText)};
+    bubble.appendChild(pdf);
+  }
+  div.innerHTML='<div class=avatar>'+(role==='user'?'&#x1F464;':'&#x2708;')+'</div>';
+  div.querySelector('.avatar').after(bubble);
   $msgs.appendChild(div); scroll(); return div;
 }
 
@@ -338,6 +353,34 @@ function renderMD(text){
   return out
 }
 
+function downloadPDF(text){
+  if(!text||!text.trim()){alert('暂无内容可导出');return}
+  const isItinerary=text.includes('━━━')||text.includes('行程计划')||text.includes('小贴士');
+  const title=isItinerary?'行程规划':'旅行问答';
+  const dateStr=new Date().toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric'});
+  const w=window.open('','_blank');
+  if(!w){alert('请允许弹出窗口以导出PDF');return}
+  w.document.write('<!DOCTYPE html><html lang=zh-CN><head><meta charset=UTF-8><title>旅途小智 - '+title+'</title><style>');
+  w.document.write('*{margin:0;padding:0;box-sizing:border-box}');
+  w.document.write('body{font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;color:#2c2416;padding:0;background:#f7f4ef}');
+  w.document.write('.page{max-width:720px;margin:0 auto;padding:50px 40px;background:#fff;min-height:100vh}');
+  w.document.write('.logo{font-size:28px;margin-bottom:4px}');
+  w.document.write('h1{font-size:22px;color:#e8811a;margin-bottom:4px}');
+  w.document.write('.meta{color:#8b7355;font-size:13px;margin-bottom:20px;border-bottom:2px solid #e8811a;padding-bottom:12px}');
+  w.document.write('.content{line-height:1.9;font-size:14px;white-space:pre-wrap;word-break:break-word}');
+  w.document.write('.content strong{color:#c45d0c}');
+  w.document.write('.footer{margin-top:30px;padding-top:14px;border-top:1px solid #e8dfd3;color:#8b7355;font-size:12px;text-align:center}');
+  w.document.write('@media print{body{background:#fff}.page{padding:30px 20px}}');
+  w.document.write('</style></head><body><div class=page>');
+  w.document.write('<div class=logo>&#x2708;</div><h1>旅途小智 · '+title+'</h1>');
+  w.document.write('<div class=meta>生成日期：'+dateStr+'</div>');
+  w.document.write('<div class=content>'+esc(text).replace(/\n/g,'<br>')+'</div>');
+  w.document.write('<div class=footer>由「旅途小智」AI 旅行助手生成  ·  数据来源：旅游景点知识库</div>');
+  w.document.write('</div><script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script>');
+  w.document.write('</body></html>');
+  w.document.close()
+}
+
 // ---- Send Message ----
 async function sendMessage(text){
   $send.disabled=true;addMsg('user',esc(text));_streamTarget=null;
@@ -361,7 +404,10 @@ async function sendMessage(text){
           case'tool_end':finishTool();break;
           case'token':
             if(ld.parentNode)ld.remove();fullAnswer+=data.text;
-            getStreamTarget().innerHTML=renderMD(fullAnswer);scroll();break;
+            const st=getStreamTarget();
+            const cdiv=st.querySelector('.bubble-content')||st;
+            cdiv.innerHTML=renderMD(fullAnswer);
+            st.dataset.rawText=fullAnswer;scroll();break;
           case'error':if(ld.parentNode)ld.remove();addMsg('ai','&#x26A0; '+esc(data.error));break;
           case'done':
             if(ld.parentNode)ld.remove();threadId=data.thread_id||threadId;
