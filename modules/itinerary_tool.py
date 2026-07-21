@@ -65,13 +65,7 @@ class ItineraryTool(BaseTool):
     )
     args_schema: Type[BaseModel] = ItineraryInput
 
-    # ---- 城市间参考车程（小时） ----
-    _TRAVEL_TIME: dict = {
-        ("北京", "天津"): 0.5, ("上海", "杭州"): 1.0, ("上海", "苏州"): 0.5,
-        ("广州", "深圳"): 0.5, ("成都", "重庆"): 1.5, ("成都", "都江堰"): 1.0,
-        ("杭州", "苏州"): 1.5, ("南京", "杭州"): 1.5, ("南京", "上海"): 1.0,
-        ("西安", "洛阳"): 1.5, ("桂林", "阳朔"): 1.0,
-    }
+    # ---- 城市间参考车程（小时）- 在 _travel_time 中以内联字典使用 ----
 
     @staticmethod
     def _parse_spots(spots_text: str) -> List[dict]:
@@ -120,11 +114,21 @@ class ItineraryTool(BaseTool):
             return 0.5
         key = (city_a, city_b)
         rev_key = (city_b, city_a)
-        d = ItineraryTool._TRAVEL_TIME
-        if key in d:
-            return d[key]
-        if rev_key in d:
-            return d[rev_key]
+        # 注意：不能使用 ItineraryTool._TRAVEL_TIME 访问类属性，
+        # 因为 Pydantic v2 会将带下划线的属性存入 __pydantic_private__，
+        # 类级别访问会返回 ModelPrivateAttr 描述符而非实际值。
+        # 通过实例方法访问则需要改为非 staticmethod。
+        # 作为临时方案，直接使用内联字典
+        travel_data = {
+            ("北京", "天津"): 0.5, ("上海", "杭州"): 1.0, ("上海", "苏州"): 0.5,
+            ("广州", "深圳"): 0.5, ("成都", "重庆"): 1.5, ("成都", "都江堰"): 1.0,
+            ("杭州", "苏州"): 1.5, ("南京", "杭州"): 1.5, ("南京", "上海"): 1.0,
+            ("西安", "洛阳"): 1.5, ("桂林", "阳朔"): 1.0,
+        }
+        if key in travel_data:
+            return travel_data[key]
+        if rev_key in travel_data:
+            return travel_data[rev_key]
         return 2.0  # 默认跨城
 
     @staticmethod

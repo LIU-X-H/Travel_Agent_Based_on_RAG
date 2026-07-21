@@ -110,11 +110,9 @@ class ScenicSpotRetrieveTool(BaseTool):
     )
     args_schema: Type[BaseModel] = ScenicSpotSearchInput
 
-    # ---- 内部依赖 ----
-    _retriever: ScenicRetriever | None = None  # type: ignore[assignment]
-
-    class Config:
-        arbitrary_types_allowed = True
+    # ---- 内部依赖（在 __init__ 中设置，避免 Pydantic v2 私有属性问题） ----
+    # 不要在类级别声明带下划线的私有属性，否则 Pydantic v2 会创建 ModelPrivateAttr 描述符
+    # 导致 LangChain ToolNode 处理时出错: "argument of type 'ModelPrivateAttr' is not iterable"
 
     def __init__(self, retriever: ScenicRetriever | None = None, **kwargs: Any) -> None:
         """

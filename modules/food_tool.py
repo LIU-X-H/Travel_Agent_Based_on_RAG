@@ -69,15 +69,17 @@ class FoodTool(BaseTool):
     )
     args_schema: Type[BaseModel] = FoodSearchInput
 
-    _store: Optional[ScenicVectorStore] = None
-    _food_collection: str = "food_recommendations"
-    _imported: bool = False
-
-    class Config:
-        arbitrary_types_allowed = True
+    # 注意：不要在类级别声明带下划线的私有属性（带类型注解），
+    # 否则 Pydantic v2 会创建 ModelPrivateAttr 描述符，
+    # 导致 LangChain 处理工具时引发 "argument of type 'ModelPrivateAttr' is not iterable" 错误。
+    # 所有内部属性改在 __init__ 中通过 self.xxx 直接设置（无类型注解）。
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
+        # 以下为实例属性（非 Pydantic 字段/私有属性），避免 ModelPrivateAttr 问题
+        self._store: Optional[ScenicVectorStore] = None
+        self._food_collection: str = "food_recommendations"
+        self._imported: bool = False
         self._ensure_food_data()
 
     # ============================================================
